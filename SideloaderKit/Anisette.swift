@@ -80,6 +80,19 @@ public enum Anisette {
                 print("[SideStep anisette] local anisette failed on \(macOSVersion): \(why) — trying anisette server")
             }
         }
+        // macOS 27+: Apple's own Android ADI libraries, emulated locally (AltServer 1.8.1's approach).
+        var emulatedWhy = "skipped (SIDESTEP_EMULATED_ANISETTE=0)"
+        if EmulatedAnisette.isEnabled {
+            switch EmulatedAnisette.fetch() {
+            case .success(let a):
+                print("[SideStep anisette] using locally emulated anisette")
+                lastFailure = nil
+                return a
+            case .failure(.message(let why)):
+                emulatedWhy = why
+                print("[SideStep anisette] emulated anisette failed: \(why) — trying anisette server")
+            }
+        }
         var remoteErrs: [String] = []
         // Public anisette servers are often overloaded (502s, timeouts, and provisioning
         // messages landing on a different backend → "unknown session (-45025)"), so retry
@@ -101,7 +114,7 @@ public enum Anisette {
             remoteErrs.append("\(host(server)): \(why)")
         }
         let msg = "Couldn’t get Apple’s sign-in data (“anisette”) on macOS \(macOSVersion). "
-            + "This Mac: \(localWhy). Anisette server — \(remoteErrs.joined(separator: "; ")). "
+            + "This Mac: \(localWhy). Emulated: \(emulatedWhy). Anisette server — \(remoteErrs.joined(separator: "; ")). "
             + "Check your internet connection, or set a different anisette server in SideStep ▸ Settings."
         print("[SideStep anisette] FAILED: \(msg)")
         lastFailure = msg

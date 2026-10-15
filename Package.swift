@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "AltSign",
     platforms: [
-        .iOS(.v14),
+        .iOS(.v15),   // AnisetteKit requires iOS 15
         .macOS(.v14)   // bumped from v11 for the SwiftUI installer app (build host is macOS 26)
     ],
 
@@ -26,6 +26,11 @@ let package = Package(
         )
     ],
 
+
+    dependencies: [
+        // Local, emulated anisette for macOS 27+ (same package and revision AltServer 1.8.1 uses).
+        .package(url: "https://github.com/altstoreio/AnisetteKit", revision: "1f5a7e36553cc865b873f222b87a6486c0bcc7bf")
+    ],
 
     targets: [
         .binaryTarget(
@@ -133,7 +138,7 @@ let package = Package(
         // Shared provisioning + signing + install pipeline (used by app + CLI).
         .target(
             name: "SideloaderKit",
-            dependencies: ["AltSign", "SwiftBridge"],
+            dependencies: ["AltSign", "SwiftBridge", .product(name: "AnisetteKit", package: "AnisetteKit")],
             path: "SideloaderKit"
         ),
 

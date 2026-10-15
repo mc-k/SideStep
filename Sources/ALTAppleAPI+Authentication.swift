@@ -289,7 +289,7 @@ private extension ALTAppleAPI {
                         request.allHTTPHeaderFields?["security-code"] = verificationCode
 
                         verboseLog("[AltSign] requestTrustedDeviceTwoFactorCode verifying code...")
-                        let verifyCodeTask = self.session.dataTask(with: request) { (data, response, error) in
+                        let verifyCodeTask = ALTAppleAPI.gsaDataTask(with: request) { (data, response, error) in
                             do
                             {
                                 if let error {
@@ -365,7 +365,7 @@ private extension ALTAppleAPI {
             return
         }
 
-        let requestCodeTask = session.dataTask(with: request) { _, response, error in
+        let requestCodeTask = ALTAppleAPI.gsaDataTask(with: request) { _, response, error in
             if let error {
                 verboseLog("[AltSign] requestSMSTwoFactorCode request code task failed: \(error)")
             } else {
@@ -402,7 +402,7 @@ private extension ALTAppleAPI {
                         request.httpBody = bodyData
 
                         verboseLog("[AltSign] requestSMSTwoFactorCode verifying code...")
-                        let verifyCodeTask = self.session.dataTask(with: request) { _, response, error in
+                        let verifyCodeTask = ALTAppleAPI.gsaDataTask(with: request) { _, response, error in
                             do {
                                 if let error {
                                     verboseLog("[AltSign] requestSMSTwoFactorCode verification failed: \(error)")
@@ -503,7 +503,7 @@ private extension ALTAppleAPI {
                 "Content-Type": "text/x-xml-plist",
                 "X-MMe-Client-Info": anisetteData.deviceDescription,
                 "Accept": "*/*",
-                "User-Agent": "AuthKit/1 (Macintosh; OS X 26.5.2) (com.apple.dt.Xcode/26.0)"
+                "User-Agent": "AuthKit/1 (Macintosh; OS X 26.5.2) (com.apple.akd/1.0)"
             ]
 
             let bodyData = try PropertyListSerialization.data(fromPropertyList: parameters, format: .xml, options: 0)
@@ -513,13 +513,17 @@ private extension ALTAppleAPI {
             request.httpBody = bodyData
             httpHeaders.forEach { request.addValue($0.value, forHTTPHeaderField: $0.key) }
 
-            let dataTask = self.session.dataTask(with: request) { (data, response, error) in
+            let dataTask = ALTAppleAPI.gsaDataTask(with: request) { (data, response, error) in
                 do
                 {
                     if let error {
                         verboseLog("[AltSign] sendAuthenticationRequest failed with error: \(error)")
                     }
                     guard let data = data else { throw error ?? ALTAppleAPIError.unknown }
+
+                    let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    print("[SideStep auth] GsService2 HTTP \(httpStatus), \(data.count) bytes")
+                    print("[SideStep auth] body: \(String(data: data.prefix(2000), encoding: .utf8) ?? "<binary>")")
 
                     guard let responseDictionary = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
                           let dictionary = responseDictionary["Response"] as? [String: Any],
@@ -624,5 +628,19 @@ private extension Data {
         let tag        = Data(self[(self.count - tagSize)...])
 
         return CoreCryptoBridge.aesGCMDecrypt(key: sessionKey, nonce: nonce, aad: aad, ciphertext: ciphertext, tag: tag)
+    }
+}
+
+
+// Apple's GSA edge answers HTTP 503 to the 3rd+ request on a reused keep-alive connection
+// (AltStore issue #1782, AltSign PR #52). Give every gsa.apple.com request its own session.
+extension ALTAppleAPI {
+    static func gsaDataTask(with request: URLRequest,
+                            completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
+        let oneShot = URLSession(configuration: .ephemeral)
+        return oneShot.dataTask(with: request) { data, response, error in
+            completionHandler(data, response, error)
+            oneShot.finishTasksAndInvalidate()
+        }
     }
 }
